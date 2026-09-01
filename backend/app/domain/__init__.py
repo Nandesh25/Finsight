@@ -1,4 +1,12 @@
-# This file makes 'domain' a Python package.
-# The domain layer contains the core business logic and models of FinSight.
-# It is independent of frameworks, databases, and APIs.
+"""
+FinSight — Phase 5: User, Account & Domain Relationships
+========================================================
 
+This phase introduces the User domain model and establishes proper object
+relationships using composition and association.
+"""
+
+from .user import User
+from .account import Account
+
+__all__ = ["User", "Account"]
