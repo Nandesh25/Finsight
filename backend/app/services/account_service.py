@@ -1,56 +1,58 @@
 """
-FinSight — Account Service
+FinSight — Account Service (Updated with Repository Pattern)
 
 This module defines the AccountService class, which coordinates account-related
-business operations. This is the service layer that sits between the API/UI
-and the domain models.
+business operations using the Repository Pattern for data access.
 
 Key Architecture Concepts:
     - Service Layer: Orchestrates business operations across domain objects
-    - Separation of Concerns: Services coordinate, domains contain business logic
-    - Dependency Injection: Services depend on abstractions, not concrete implementations
-    - Single Responsibility: AccountService handles account operations only
+    - Repository Pattern: Uses repositories for data access
+    - Dependency Injection: Repositories injected via constructor
+    - Separation of Concerns: Services coordinate, repositories handle data access
+    - Abstraction: Depends on repository interfaces, not implementations
 """
 
 from typing import Optional
 from app.domain.user import User
 from app.domain.account import Account
-from app.domain.transaction import Transaction
-from datetime import datetime
+from app.repositories.user_repository import UserRepository
+from app.repositories.account_repository import AccountRepository
 
 
 class AccountService:
     """
     Service for account-related operations.
 
-    This service coordinates operations between User and Account domain objects.
-    It does NOT duplicate the business logic that already exists in Account
-    (validation, balance management) — it delegates to those objects.
+    This service now uses repositories for data access instead of managing
+    storage directly. This demonstrates:
+        - Dependency Injection: Repositories passed to constructor
+        - Separation of Concerns: Service coordinates, repository persists
+        - Loose Coupling: Service depends on abstractions (repository interfaces)
 
-    Responsibility:
-        - Coordinate User and Account objects
-        - Generate unique IDs for accounts
-        - Provide a convenient API for account operations
-        - Handle cross-object operations (e.g., creating account and adding to user)
-
-    What it does NOT do:
-        - Duplicate Account's validation logic
-        - Directly manipulate Account's internal state
-        - Replace domain object behavior
-
-    Design Pattern: Service Layer
-        The service layer sits between the presentation layer (API/UI) and
-        the domain layer. It orchestrates use cases without containing
-        business rules (those live in the domain).
+    Updated in Phase 7: Now uses repositories for persistence.
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        user_repository: UserRepository,
+        account_repository: AccountRepository,
+    ) -> None:
         """
-        Initialize the AccountService.
+        Initialize the AccountService with repository dependencies.
 
-        In future phases, this is where we'll inject dependencies like
-        repositories, event publishers, etc. For now, it's stateless.
+        This is Dependency Injection in action. The service receives
+        its dependencies (repositories) from the outside, rather than
+        creating them internally. This enables:
+            - Easy testing with mock repositories
+            - Swapping implementations without changing the service
+            - Clear declaration of dependencies
+
+        Args:
+            user_repository: Repository for user data access
+            account_repository: Repository for account data access
         """
+        self._user_repo = user_repository
+        self._account_repo = account_repository
         self._account_counter = 0
 
     def create_account(
@@ -62,12 +64,10 @@ class AccountService:
         """
         Create a new account and add it to the user.
 
-        This method coordinates two operations:
-        1. Create the Account domain object
-        2. Add it to the User
-
-        The business rules (valid account types, non-negative balance) are
-        enforced by the Account class itself, not by this service.
+        This method now:
+        1. Creates the Account domain object
+        2. Persists it via repository
+        3. Adds it to the User
 
         Args:
             user: The User who will own the account
@@ -83,12 +83,13 @@ class AccountService:
         # Generate a unique account number
         account_number = self._generate_account_number()
 
-        # Create the Account domain object
-        # Validation happens inside Account.__init__
+        # Create the Account domain object (validation happens here)
         account = Account(account_number, account_type, balance=initial_balance)
 
+        # Persist the account via repository
+        self._account_repo.create(account)
+
         # Add to user
-        # Validation happens inside User.add_account
         user.add_account(account)
 
         return account
@@ -102,12 +103,7 @@ class AccountService:
         """
         Deposit money into an account.
 
-        This service method:
-        1. Finds the account in the user's collection
-        2. Delegates the deposit operation to the Account object
-
-        The deposit validation (positive amount) is handled by Account,
-        not by this service.
+        Now retrieves account from repository instead of from user directly.
 
         Args:
             user: The User who owns the account
@@ -120,15 +116,26 @@ class AccountService:
         Raises:
             ValueError: If account not found or deposit validation fails
         """
-        account = user.find_account(account_number)
+        # Retrieve account from repository
+        account = self._account_repo.find_by_account_number(account_number)
 
         if account is None:
             raise ValueError(
-                f"Account {account_number} not found for user {user.user_id}."
+                f"Account {account_number} not found."
+            )
+
+        # Verify account belongs to user
+        if user.find_account(account_number) is None:
+            raise ValueError(
+                f"Account {account_number} does not belong to user {user.user_id}."
             )
 
         # Delegate to Account — it handles validation and balance update
         new_balance = account.deposit(amount)
+
+        # Update account in repository
+        self._account_repo.update(account)
+
         return new_balance
 
     def withdraw(
@@ -140,12 +147,7 @@ class AccountService:
         """
         Withdraw money from an account.
 
-        This service method:
-        1. Finds the account in the user's collection
-        2. Delegates the withdrawal operation to the Account object
-
-        The withdrawal validation (positive amount, sufficient balance) is
-        handled by Account, not by this service.
+        Now retrieves and updates account via repository.
 
         Args:
             user: The User who owns the account
@@ -158,15 +160,26 @@ class AccountService:
         Raises:
             ValueError: If account not found or withdrawal validation fails
         """
-        account = user.find_account(account_number)
+        # Retrieve account from repository
+        account = self._account_repo.find_by_account_number(account_number)
 
         if account is None:
             raise ValueError(
-                f"Account {account_number} not found for user {user.user_id}."
+                f"Account {account_number} not found."
+            )
+
+        # Verify account belongs to user
+        if user.find_account(account_number) is None:
+            raise ValueError(
+                f"Account {account_number} does not belong to user {user.user_id}."
             )
 
         # Delegate to Account — it handles validation and balance update
         new_balance = account.withdraw(amount)
+
+        # Update account in repository
+        self._account_repo.update(account)
+
         return new_balance
 
     def get_account_balance(
@@ -187,11 +200,17 @@ class AccountService:
         Raises:
             ValueError: If account not found
         """
-        account = user.find_account(account_number)
+        account = self._account_repo.find_by_account_number(account_number)
 
         if account is None:
             raise ValueError(
-                f"Account {account_number} not found for user {user.user_id}."
+                f"Account {account_number} not found."
+            )
+
+        # Verify account belongs to user
+        if user.find_account(account_number) is None:
+            raise ValueError(
+                f"Account {account_number} does not belong to user {user.user_id}."
             )
 
         return account.balance
@@ -204,22 +223,33 @@ class AccountService:
         """
         Retrieve an account by its number.
 
-        This is a convenience method that delegates to User.find_account.
+        Now retrieves from repository instead of from user.
 
         Args:
             user: The User who owns the account
             account_number: The account to retrieve
 
         Returns:
-            The Account object if found, None otherwise
+            The Account object if found and belongs to user, None otherwise
         """
-        return user.find_account(account_number)
+        account = self._account_repo.find_by_account_number(account_number)
+
+        if account is None:
+            return None
+
+        # Verify account belongs to user
+        if user.find_account(account_number) is None:
+            return None
+
+        return account
 
     def list_accounts(self, user: User) -> list[Account]:
         """
         List all accounts for a user.
 
-        This is a convenience method that delegates to User.list_accounts.
+        This still delegates to User.list_accounts since User manages
+        the account collection. In a database-backed implementation,
+        this might query the repository directly.
 
         Args:
             user: The User whose accounts to list
@@ -237,9 +267,7 @@ class AccountService:
         """
         Close (remove) an account from a user.
 
-        This delegates to User.remove_account. In a real system, you might
-        add additional checks here (e.g., balance must be zero, no pending
-        transactions, etc.).
+        Now also deletes from repository.
 
         Args:
             user: The User who owns the account
@@ -249,24 +277,35 @@ class AccountService:
             The closed Account object
 
         Raises:
-            ValueError: If account not found
+            ValueError: If account not found or has non-zero balance
         """
-        # Future enhancement: check balance is zero
-        account = user.find_account(account_number)
-        if account and account.balance != 0:
+        account = self._account_repo.find_by_account_number(account_number)
+
+        if account is None:
+            raise ValueError(
+                f"Account {account_number} not found."
+            )
+
+        # Check balance is zero
+        if account.balance != 0:
             raise ValueError(
                 f"Cannot close account {account_number} with non-zero balance."
             )
 
-        return user.remove_account(account_number)
+        # Remove from user
+        removed = user.remove_account(account_number)
+
+        # Delete from repository
+        self._account_repo.delete(account_number)
+
+        return removed
 
     def _generate_account_number(self) -> str:
         """
         Generate a unique account number.
 
-        In a real system, this would use a database sequence, UUID, or
-        distributed ID generator. For this in-memory implementation, we
-        use a simple counter.
+        In a real system with multiple service instances, this would
+        use a database sequence or distributed ID generator.
 
         Returns:
             A unique account number like "ACC-000001"

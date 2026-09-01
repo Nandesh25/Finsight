@@ -1,53 +1,49 @@
 """
-FinSight — Transaction Service
+FinSight — Transaction Service (Updated with Repository Pattern)
 
 This module defines the TransactionService class, which coordinates transaction-related
-business operations. This service manages the creation and retrieval of transaction
-records for accounts.
+business operations using the Repository Pattern for data access.
 
 Key Architecture Concepts:
     - Service Layer: Orchestrates transaction operations
-    - Separation of Concerns: Service coordinates, domains enforce rules
-    - Dependency Injection: Designed for future repository injection
-    - Single Responsibility: TransactionService handles transactions only
+    - Repository Pattern: Uses repositories for data access
+    - Dependency Injection: Repository injected via constructor
+    - Separation of Concerns: Service coordinates, repository persists
+    - Abstraction: Depends on repository interface, not implementation
 """
 
 from typing import Optional
 from datetime import datetime
-from app.domain.user import User
 from app.domain.account import Account
 from app.domain.transaction import Transaction, TransactionType
+from app.repositories.transaction_repository import TransactionRepository
 
 
 class TransactionService:
     """
     Service for transaction-related operations.
 
-    This service coordinates transaction creation, validation, and retrieval.
-    It works with Account objects to ensure transactions are properly recorded
-    and validated.
+    This service now uses a repository for data access instead of managing
+    storage directly. This demonstrates:
+        - Dependency Injection: Repository passed to constructor
+        - Separation of Concerns: Service coordinates, repository persists
+        - Loose Coupling: Service depends on abstraction (repository interface)
 
-    Responsibility:
-        - Create transaction records for deposits/withdrawals
-        - Generate unique transaction IDs
-        - Retrieve transaction history for accounts
-        - Validate transactions before creation
-
-    Design Pattern: Service Layer
-        Coordinates use cases involving transactions. In future phases,
-        this will interact with a TransactionRepository for persistence.
+    Updated in Phase 7: Now uses TransactionRepository for persistence.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, transaction_repository: TransactionRepository) -> None:
         """
-        Initialize the TransactionService.
+        Initialize the TransactionService with repository dependency.
 
-        For now, we store transactions in memory. In future phases, this
-        will be replaced with a repository pattern for database persistence.
+        This is Dependency Injection in action. The service receives
+        its dependencies from the outside rather than creating them.
+
+        Args:
+            transaction_repository: Repository for transaction data access
         """
+        self._transaction_repo = transaction_repository
         self._transaction_counter = 0
-        # In-memory storage: account_number -> list of transactions
-        self._transactions: dict[str, list[Transaction]] = {}
 
     def create_transaction(
         self,
@@ -59,14 +55,7 @@ class TransactionService:
         """
         Create a transaction record for an account operation.
 
-        This method creates an immutable Transaction object to record a
-        deposit or withdrawal. It does NOT modify the account balance —
-        that should be done separately through Account.deposit/withdraw.
-
-        This separation allows for:
-        - Atomic operations (update balance + record transaction)
-        - Transaction history tracking
-        - Audit trails
+        Now persists via repository instead of internal storage.
 
         Args:
             account: The Account this transaction belongs to
@@ -83,8 +72,7 @@ class TransactionService:
         # Generate unique transaction ID
         transaction_id = self._generate_transaction_id()
 
-        # Create the Transaction domain object
-        # Validation happens inside Transaction.__init__
+        # Create the Transaction domain object (validation happens here)
         transaction = Transaction(
             transaction_id=transaction_id,
             account_number=account.account_number,
@@ -94,11 +82,8 @@ class TransactionService:
             description=description,
         )
 
-        # Store in our in-memory registry
-        if account.account_number not in self._transactions:
-            self._transactions[account.account_number] = []
-
-        self._transactions[account.account_number].append(transaction)
+        # Persist via repository
+        self._transaction_repo.create(transaction)
 
         return transaction
 
@@ -144,6 +129,8 @@ class TransactionService:
         """
         Retrieve transactions for an account.
 
+        Now delegates to repository instead of internal storage.
+
         Args:
             account_number: The account to retrieve transactions for
             transaction_type: Filter by type ("deposit" or "withdrawal"), None for all
@@ -152,26 +139,11 @@ class TransactionService:
         Returns:
             List of Transaction objects, most recent first
         """
-        if account_number not in self._transactions:
-            return []
-
-        transactions = self._transactions[account_number]
-
-        # Filter by type if specified
-        if transaction_type is not None:
-            transactions = [
-                txn for txn in transactions
-                if txn.transaction_type == transaction_type
-            ]
-
-        # Sort by timestamp, most recent first
-        transactions = sorted(transactions, key=lambda t: t.timestamp, reverse=True)
-
-        # Apply limit if specified
-        if limit is not None:
-            transactions = transactions[:limit]
-
-        return transactions
+        return self._transaction_repo.find_by_account(
+            account_number=account_number,
+            transaction_type=transaction_type,
+            limit=limit,
+        )
 
     def get_transaction_by_id(
         self,
@@ -180,21 +152,21 @@ class TransactionService:
         """
         Retrieve a specific transaction by its ID.
 
+        Now retrieves from repository.
+
         Args:
             transaction_id: The transaction ID to search for
 
         Returns:
             The Transaction object if found, None otherwise
         """
-        for transactions in self._transactions.values():
-            for txn in transactions:
-                if txn.transaction_id == transaction_id:
-                    return txn
-        return None
+        return self._transaction_repo.find_by_id(transaction_id)
 
     def get_transaction_count(self, account_number: str) -> int:
         """
         Get the total number of transactions for an account.
+
+        Now delegates to repository.
 
         Args:
             account_number: The account to count transactions for
@@ -202,9 +174,7 @@ class TransactionService:
         Returns:
             Number of transactions
         """
-        if account_number not in self._transactions:
-            return 0
-        return len(self._transactions[account_number])
+        return self._transaction_repo.count_by_account(account_number)
 
     def get_total_deposited(self, account_number: str) -> float:
         """
@@ -314,9 +284,8 @@ class TransactionService:
         """
         Generate a unique transaction ID.
 
-        In a real system, this would use a database sequence, UUID, or
-        distributed ID generator. For this in-memory implementation, we
-        use a simple counter.
+        In a real system with multiple service instances, this would
+        use a database sequence or distributed ID generator.
 
         Returns:
             A unique transaction ID like "TXN-000001"

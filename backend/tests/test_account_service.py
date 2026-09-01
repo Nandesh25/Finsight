@@ -1,8 +1,11 @@
 """
-Tests for the AccountService.
+Tests for the AccountService (Updated for Repository Pattern).
 
 These tests verify that AccountService correctly coordinates operations
-between User and Account domain objects, without duplicating business logic.
+between User and Account domain objects using repositories, without
+duplicating business logic.
+
+Updated in Phase 7: Now uses repository injection.
 
 Test naming convention: test_<what>_<scenario>_<expected_outcome>
 """
@@ -12,6 +15,8 @@ import pytest
 from app.domain.user import User
 from app.domain.account import Account
 from app.services.account_service import AccountService
+from app.repositories.user_repository import InMemoryUserRepository
+from app.repositories.account_repository import InMemoryAccountRepository
 
 
 # ──────────────────────────────────────────────
@@ -24,7 +29,9 @@ class TestCreateAccount:
 
     def test_create_savings_account(self):
         """Creating a savings account should create and add it to the user."""
-        service = AccountService()
+        user_repo = InMemoryUserRepository()
+        account_repo = InMemoryAccountRepository()
+        service = AccountService(user_repo, account_repo)
         user = User("USER-001", "Alice", "alice@example.com")
 
         account = service.create_account(user, "savings", initial_balance=100.0)
@@ -36,7 +43,9 @@ class TestCreateAccount:
 
     def test_create_checking_account(self):
         """Creating a checking account should create and add it to the user."""
-        service = AccountService()
+        user_repo = InMemoryUserRepository()
+        account_repo = InMemoryAccountRepository()
+        service = AccountService(user_repo, account_repo)
         user = User("USER-002", "Bob", "bob@example.com")
 
         account = service.create_account(user, "checking", initial_balance=500.0)
@@ -46,7 +55,9 @@ class TestCreateAccount:
 
     def test_create_account_default_balance(self):
         """Creating an account without initial_balance should default to 0.0."""
-        service = AccountService()
+        user_repo = InMemoryUserRepository()
+        account_repo = InMemoryAccountRepository()
+        service = AccountService(user_repo, account_repo)
         user = User("USER-003", "Carol", "carol@example.com")
 
         account = service.create_account(user, "savings")
