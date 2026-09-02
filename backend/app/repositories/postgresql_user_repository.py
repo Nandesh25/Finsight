@@ -14,9 +14,9 @@ Key Architecture Concepts:
 from typing import Optional
 from sqlalchemy.orm import Session
 
-from app.domain.user import User
+from app.domain.user import User, UserRole
 from app.repositories.user_repository import UserRepository
-from app.database.models import UserModel
+from app.database.models import UserModel, UserRoleEnum
 
 
 class PostgreSQLUserRepository(UserRepository):
@@ -68,7 +68,9 @@ class PostgreSQLUserRepository(UserRepository):
         db_user = UserModel(
             user_id=user.user_id,
             name=user.name,
-            email=user.email
+            email=user.email,
+            hashed_password=user.hashed_password,
+            role=UserRoleEnum[user.role.value]
         )
 
         # Save to database
@@ -143,6 +145,26 @@ class PostgreSQLUserRepository(UserRepository):
         self._session.commit()
         return True
 
+    def find_by_email(self, email: str) -> Optional[User]:
+        """
+        Find a user by email address.
+
+        This is needed for authentication - users log in with email.
+
+        Args:
+            email: The email address to search for
+
+        Returns:
+            User domain object if found, None otherwise
+        """
+        db_user = self._session.query(UserModel).filter_by(email=email).first()
+
+        if db_user is None:
+            return None
+
+        # Convert database model to domain model
+        return self._db_user_to_domain(db_user)
+
     def _db_user_to_domain(self, db_user: UserModel) -> User:
         """
         Convert a UserModel (database) to a User (domain).
@@ -160,7 +182,9 @@ class PostgreSQLUserRepository(UserRepository):
         user = User(
             user_id=db_user.user_id,
             name=db_user.name,
-            email=db_user.email
+            email=db_user.email,
+            hashed_password=db_user.hashed_password,
+            role=UserRole[db_user.role.value]
         )
 
         # Note: We don't load accounts here to avoid unnecessary queries.

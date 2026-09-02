@@ -13,8 +13,21 @@ Key OOP concepts demonstrated:
 """
 
 from typing import Optional
+from enum import Enum
 
 from app.domain.account import Account
+
+
+class UserRole(Enum):
+    """
+    Enum for user roles in the system.
+
+    Demonstrates authorization and access control concepts:
+        - USER: Standard user with access to their own resources
+        - ADMIN: Administrative user with elevated privileges
+    """
+    USER = "USER"
+    ADMIN = "ADMIN"
 
 
 class User:
@@ -44,6 +57,8 @@ class User:
         user_id: str,
         name: str,
         email: str,
+        hashed_password: Optional[str] = None,
+        role: UserRole = UserRole.USER,
     ) -> None:
         """
         Initialize a new User.
@@ -52,6 +67,8 @@ class User:
             user_id: Unique identifier for the user (e.g., "USER-001")
             name: User's full name
             email: User's email address
+            hashed_password: Hashed password (never store plain passwords)
+            role: User role for authorization (USER or ADMIN)
 
         Raises:
             ValueError: If user_id, name, or email is empty
@@ -74,6 +91,8 @@ class User:
         self.user_id: str = user_id
         self.name: str = name
         self.email: str = email
+        self.hashed_password: Optional[str] = hashed_password
+        self.role: UserRole = role
 
         # Private collection of accounts.
         # We use a list because:
@@ -202,16 +221,28 @@ class User:
         """
         return sum(account.balance for account in self._accounts)
 
+    def is_admin(self) -> bool:
+        """
+        Check if this user has admin privileges.
+
+        This demonstrates role-based authorization.
+
+        Returns:
+            True if user has ADMIN role, False otherwise
+        """
+        return self.role == UserRole.ADMIN
+
     def __repr__(self) -> str:
         """
         Return a developer-friendly string representation of the User.
 
         Returns:
-            A string like: User('USER-001', name='John Doe', email='john@example.com', accounts=2)
+            A string like: User('USER-001', name='John Doe', email='john@example.com', role='USER', accounts=2)
         """
         return (
             f"User('{self.user_id}', "
             f"name='{self.name}', "
             f"email='{self.email}', "
+            f"role='{self.role.value}', "
             f"accounts={len(self._accounts)})"
         )

@@ -7,11 +7,13 @@ application instance and defines the API endpoints.
 Key concepts demonstrated:
     - Creating a FastAPI application (which is a Python class instance)
     - Defining routes using decorators (@app.get)
+    - Including routers for modular route organization
     - Returning structured responses as Python dictionaries (FastAPI
       automatically converts them to JSON)
 """
 
 from fastapi import FastAPI
+from app.routes.auth_routes import router as auth_router
 
 # Create an instance of the FastAPI class.
 # This object IS your web application. All routes are registered on it.
@@ -19,9 +21,13 @@ from fastapi import FastAPI
 # knows how to handle HTTP requests.
 app = FastAPI(
     title="FinSight API",
-    description="AI-powered FinTech enterprise application",
-    version="0.1.0",
+    description="AI-powered FinTech enterprise application with authentication",
+    version="0.2.0",
 )
+
+# Include authentication routes
+# This demonstrates modular route organization using APIRouter
+app.include_router(auth_router)
 
 
 @app.get("/health")
@@ -48,5 +54,6 @@ def health_check():
     return {
         "status": "healthy",
         "service": "FinSight API",
-        "version": "0.1.0",
+        "version": "0.2.0",
     }
+

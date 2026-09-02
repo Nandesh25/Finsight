@@ -31,6 +31,12 @@ class TransactionTypeEnum(enum.Enum):
     WITHDRAWAL = "withdrawal"
 
 
+class UserRoleEnum(enum.Enum):
+    """Enum for user roles."""
+    USER = "USER"
+    ADMIN = "ADMIN"
+
+
 class UserModel(Base):
     """
     SQLAlchemy model for the users table.
@@ -46,6 +52,8 @@ class UserModel(Base):
     user_id = Column(String(50), primary_key=True)
     name = Column(String(200), nullable=False)
     email = Column(String(200), nullable=False, unique=True)
+    hashed_password = Column(String(200), nullable=True)  # Nullable for backward compatibility
+    role = Column(Enum(UserRoleEnum), nullable=False, default=UserRoleEnum.USER)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
@@ -53,7 +61,7 @@ class UserModel(Base):
     accounts = relationship("AccountModel", back_populates="user", cascade="all, delete-orphan")
 
     def __repr__(self):
-        return f"<UserModel(user_id='{self.user_id}', name='{self.name}')>"
+        return f"<UserModel(user_id='{self.user_id}', name='{self.name}', role='{self.role}')>"
 
 
 class AccountModel(Base):
